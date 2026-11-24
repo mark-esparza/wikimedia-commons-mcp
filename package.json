@@ -1,0 +1,22 @@
+{
+  "name": "wikimedia-commons-mcp",
+  "version": "0.1.0",
+  "description": "Unofficial remote MCP server that lets Claude search, view, and credit freely licensed media on Wikimedia Commons.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "wrangler": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

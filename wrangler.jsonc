@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wikimedia-commons-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "observability": { "enabled": true },
+  "vars": {
+    // Sent in the User-Agent header, as Wikimedia's policy asks. Use a URL or an email you check.
+    "CONTACT": "https://github.com/mark-esparza/wikimedia-commons-mcp"
+  }
+}
