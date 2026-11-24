@@ -198,30 +198,35 @@ test("view_image refuses non-image previews", async () => {
   assert.equal(r.isError, true);
 });
 
-test("wikidata_image resolves a name, prefers chemical structure, skips deprecated claims", async () => {
+test("wikidata_image skips duplicate items without images, prefers structure, skips deprecated claims", async () => {
   const m = mockFetch([
     (u) =>
       isWikidata(u) && u.searchParams.get("action") === "wbsearchentities"
-        ? { body: { search: [{ id: "Q408528", label: "metoprolol", description: "chemical compound" }, { id: "Q999", label: "Metoprolol (film)", description: "other" }] } }
+        ? { body: { search: [{ id: "Q111", label: "Metoprolol", description: "chemical compound" }, { id: "Q222", label: "metoprolol", description: "chemical compound" }] } }
         : undefined,
     (u) =>
       isWikidata(u) && u.searchParams.get("action") === "wbgetentities"
         ? {
             body: {
-              entities: {
-                Q408528: {
-                  id: "Q408528",
-                  labels: { en: { value: "metoprolol" } },
-                  descriptions: { en: { value: "chemical compound" } },
-                  claims: {
-                    P117: [
-                      { rank: "deprecated", mainsnak: { datavalue: { value: "Old structure.png" } } },
-                      { rank: "normal", mainsnak: { datavalue: { value: "Metoprolol.svg" } } },
-                    ],
-                    P18: [{ rank: "normal", mainsnak: { datavalue: { value: "Metoprolol tablets.jpg" } } }],
-                  },
-                },
-              },
+              entities: Object.fromEntries(
+                (u.searchParams.get("ids") ?? "").split("|").map((id) => [
+                  id,
+                  id === "Q111"
+                    ? { id, labels: { en: { value: "Metoprolol" } }, claims: {} }
+                    : {
+                        id,
+                        labels: { en: { value: "metoprolol" } },
+                        descriptions: { en: { value: "chemical compound" } },
+                        claims: {
+                          P117: [
+                            { rank: "deprecated", mainsnak: { datavalue: { value: "Old structure.png" } } },
+                            { rank: "normal", mainsnak: { datavalue: { value: "Metoprolol.svg" } } },
+                          ],
+                          P18: [{ rank: "normal", mainsnak: { datavalue: { value: "Metoprolol tablets.jpg" } } }],
+                        },
+                      },
+                ]),
+              ),
             },
           }
         : undefined,
@@ -233,13 +238,39 @@ test("wikidata_image resolves a name, prefers chemical structure, skips deprecat
   const h = createHandler({ fetch: m.fetch });
   const r = await call(h, "wikidata_image", { entity: "metoprolol" });
   const d = JSON.parse(r.content[0].text);
-  assert.equal(d.entity.id, "Q408528");
-  assert.equal(d.other_matches[0].id, "Q999");
+  assert.equal(d.entity.id, "Q222");
+  assert.deepEqual(d.other_matches.map((x: any) => x.id), ["Q111"]);
   assert.deepEqual(d.files.map((f: any) => [f.property, f.title]), [["P117", "File:Metoprolol.svg"], ["P18", "File:Metoprolol tablets.jpg"]]);
+  assert.equal(m.calls[1].url.searchParams.get("ids"), "Q111|Q222");
 
-  const only = JSON.parse((await call(h, "wikidata_image", { entity: "q408528", prefer: "image" })).content[0].text);
+  const only = JSON.parse((await call(h, "wikidata_image", { entity: "q222", prefer: "image" })).content[0].text);
   assert.deepEqual(only.files.map((f: any) => f.property), ["P18"]);
   assert.deepEqual(only.other_matches, []);
+
+  const none = JSON.parse((await call(h, "wikidata_image", { entity: "Q111" })).content[0].text);
+  assert.equal(none.files.length, 0);
+  assert.match(none.note, /no linked image/);
+});
+
+test("view_image works with thumb.wikimedia.org thumbnails and URLs drop utm params", async () => {
+  const jpg = new Uint8Array([0xff, 0xd8, 0xff, 9]);
+  const page = imagePage("File:KF ring 1.jpg");
+  page.imageinfo[0].thumburl = "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/KF_ring_1.jpg/400px-KF_ring_1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail";
+  page.imageinfo[0].url = "https://upload.wikimedia.org/wikipedia/commons/6/6c/KF_ring_1.jpg?utm_source=x";
+  const m = mockFetch([
+    (u) => (isCommons(u) ? { body: { query: { pages: [page] } } } : undefined),
+    (u) => (u.hostname === "thumb.wikimedia.org" ? { body: jpg, headers: { "content-type": "image/jpeg" } } : undefined),
+  ]);
+  const h = createHandler({ fetch: m.fetch });
+  const r = await call(h, "view_image", { file: "KF ring 1.jpg" });
+  assert.equal(r.content[0].type, "image");
+  const meta = JSON.parse(r.content[1].text);
+  assert.equal(meta.thumb_url, "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/KF_ring_1.jpg/400px-KF_ring_1.jpg");
+  assert.equal(m.calls[1].url.hostname, "thumb.wikimedia.org");
+  assert.equal(m.calls[1].url.search, "");
+
+  const info = JSON.parse((await call(h, "get_file_info", { file: "KF ring 1.jpg" })).content[0].text);
+  assert.equal(info.original_url, "https://upload.wikimedia.org/wikipedia/commons/6/6c/KF_ring_1.jpg");
 });
 
 test("find_labeled_svgs ranks by label count and only fetches upload.wikimedia.org", async () => {

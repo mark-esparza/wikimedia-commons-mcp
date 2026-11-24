@@ -148,7 +148,7 @@ export const TOOLS: ToolDef[] = [
     description:
       "Look up a concept on Wikidata (a drug, disease, organism, anatomical structure, person or place) and return its linked Commons images. " +
       "For drugs and chemicals prefer='structure' returns the chemical structure diagram (P117). prefer='image' returns the main image (P18). " +
-      "Accepts a name like 'metoprolol' or a Wikidata ID like 'Q408528'. Check entity.description to make sure the right item matched.",
+      "Accepts a name like 'metoprolol' or a Wikidata Q-ID. A name search picks the first match that has an image; check entity.description and other_matches to make sure the right item was used.",
     inputSchema: {
       type: "object",
       properties: {
@@ -170,7 +170,7 @@ export const TOOLS: ToolDef[] = [
     name: "find_labeled_svgs",
     title: "Find labeled SVG diagrams",
     description:
-      "Search Commons for SVG diagrams whose labels are real text (not outlines), ranked by how many labels they contain. " +
+      "Search Commons for SVG diagrams whose labels are real text (not outlines), ranked by how many labels they contain. Results can include translated versions of a diagram, so check the labels' language. " +
       "These are good sources for image occlusion flashcards because each label can be hidden and quizzed. Returns the labels found in each file.",
     inputSchema: {
       type: "object",

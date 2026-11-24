@@ -5,7 +5,20 @@ import { clampInt, stripHtml, toBase64, ToolError, truncate } from "./util.ts";
 
 export const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
 export const WIKIDATA_API = "https://www.wikidata.org/w/api.php";
-const UPLOAD_HOST = "upload.wikimedia.org";
+// Commons serves originals from upload.wikimedia.org and some thumbnails from thumb.wikimedia.org.
+const MEDIA_HOSTS = new Set(["upload.wikimedia.org", "thumb.wikimedia.org"]);
+
+/** Drop the utm_* tracking parameters Commons now appends to media URLs. */
+export function cleanMediaUrl(u: string | undefined): string | undefined {
+  if (!u) return u;
+  try {
+    const url = new URL(u);
+    for (const k of [...url.searchParams.keys()]) if (k.startsWith("utm_")) url.searchParams.delete(k);
+    return url.toString();
+  } catch {
+    return u;
+  }
+}
 
 export interface Deps {
   fetch: typeof fetch;
@@ -67,7 +80,7 @@ export async function apiGet(deps: Deps, base: string, params: Record<string, st
   return data;
 }
 
-/** Fetch a file from upload.wikimedia.org only. Never fetch arbitrary hosts. */
+/** Fetch media only from Wikimedia media hosts. Never fetch arbitrary hosts. */
 export async function fetchUpload(deps: Deps, url: string, maxBytes: number): Promise<Response> {
   let parsed: URL;
   try {
@@ -75,8 +88,8 @@ export async function fetchUpload(deps: Deps, url: string, maxBytes: number): Pr
   } catch {
     throw new ToolError("Invalid media URL");
   }
-  if (parsed.protocol !== "https:" || parsed.hostname !== UPLOAD_HOST) {
-    throw new ToolError("Refusing to fetch media outside upload.wikimedia.org");
+  if (parsed.protocol !== "https:" || !MEDIA_HOSTS.has(parsed.hostname)) {
+    throw new ToolError("Refusing to fetch media outside Wikimedia media hosts");
   }
   const init = { headers: { "User-Agent": deps.userAgent }, cf: { cacheTtl: 86400, cacheEverything: true } } as RequestInit;
   const res = await deps.fetch(parsed.toString(), init);
@@ -114,7 +127,7 @@ export function normalizeTitle(input: string): string {
     } catch {
       throw new ToolError("Invalid URL");
     }
-    if (url.hostname === UPLOAD_HOST) {
+    if (MEDIA_HOSTS.has(url.hostname)) {
       // /wikipedia/commons/a/ab/Name.jpg  or  /wikipedia/commons/thumb/a/ab/Name.jpg/800px-Name.jpg
       const parts = url.pathname.split("/").filter(Boolean);
       const thumbAt = parts.indexOf("thumb");
@@ -162,8 +175,8 @@ export function toFileRecord(page: any): FileRecord | null {
     title,
     name,
     page_url: pageUrl,
-    original_url: info.url,
-    thumb_url: info.thumburl,
+    original_url: cleanMediaUrl(info.url) as string,
+    thumb_url: cleanMediaUrl(info.thumburl),
     thumb_width: info.thumbwidth,
     thumb_height: info.thumbheight,
     width: info.width,
@@ -343,36 +356,46 @@ export async function wikidataImages(deps: Deps, entity: string, prefer: "auto" 
   if (!q) throw new ToolError("entity is required");
   if (q.length > 200) throw new ToolError("entity is too long");
 
-  let id: string;
-  let others: WikidataResult["other_matches"] = [];
+  const order = prefer === "structure" ? ["structure"] : prefer === "image" ? ["image"] : ["structure", "image"];
+
+  let ids: string[];
+  let hits: any[] = [];
   if (/^Q\d+$/i.test(q)) {
-    id = q.toUpperCase();
+    ids = [q.toUpperCase()];
   } else {
     const s = await apiGet(deps, WIKIDATA_API, { action: "wbsearchentities", search: q, language: "en", uselang: "en", type: "item", limit: "5" });
-    const hits: any[] = s?.search ?? [];
+    hits = s?.search ?? [];
     if (hits.length === 0) throw new ToolError(`No Wikidata item matches "${q}"`);
-    id = hits[0].id;
-    others = hits.slice(1).map((h) => ({ id: h.id, label: h.label, description: h.description }));
+    ids = hits.map((h) => String(h.id));
   }
 
-  const e = await apiGet(deps, WIKIDATA_API, { action: "wbgetentities", ids: id, props: "claims|labels|descriptions", languages: "en" });
-  const item = e?.entities?.[id];
-  if (!item || item.missing !== undefined) throw new ToolError(`Wikidata item ${id} not found`);
-
-  const order = prefer === "structure" ? ["structure"] : prefer === "image" ? ["image"] : ["structure", "image"];
-  const wanted: { property: string; property_label: string; title: string }[] = [];
-  for (const key of order) {
-    const prop = WIKIDATA_PROPS[key as keyof typeof WIKIDATA_PROPS];
-    const claims: any[] = item.claims?.[prop.id] ?? [];
-    // Prefer claims ranked "preferred", then "normal"; skip "deprecated".
-    const ranked = claims
-      .filter((c) => c.rank !== "deprecated")
-      .sort((a, b) => (a.rank === "preferred" ? -1 : 0) - (b.rank === "preferred" ? -1 : 0));
-    for (const c of ranked.slice(0, 3)) {
-      const v = c?.mainsnak?.datavalue?.value;
-      if (typeof v === "string") wanted.push({ property: prop.id, property_label: prop.label, title: "File:" + v });
+  const e = await apiGet(deps, WIKIDATA_API, { action: "wbgetentities", ids: ids.join("|"), props: "claims|labels|descriptions", languages: "en" });
+  const wantedFor = (item: any) => {
+    const wanted: { property: string; property_label: string; title: string }[] = [];
+    for (const key of order) {
+      const prop = WIKIDATA_PROPS[key as keyof typeof WIKIDATA_PROPS];
+      const claims: any[] = item?.claims?.[prop.id] ?? [];
+      // Prefer claims ranked "preferred", then "normal"; skip "deprecated".
+      const ranked = claims
+        .filter((c) => c.rank !== "deprecated")
+        .sort((a, b) => (a.rank === "preferred" ? -1 : 0) - (b.rank === "preferred" ? -1 : 0));
+      for (const c of ranked.slice(0, 3)) {
+        const v = c?.mainsnak?.datavalue?.value;
+        if (typeof v === "string") wanted.push({ property: prop.id, property_label: prop.label, title: "File:" + v });
+      }
     }
-  }
+    return wanted;
+  };
+
+  // Search often returns duplicate or minor items first; take the first match (in search order) that has an image.
+  const present = ids.filter((i) => e?.entities?.[i] && e.entities[i].missing === undefined);
+  if (present.length === 0) throw new ToolError(`Wikidata item ${ids[0]} not found`);
+  const id = present.find((i) => wantedFor(e.entities[i]).length > 0) ?? present[0];
+  const item = e.entities[id];
+  const wanted = wantedFor(item);
+  const others: WikidataResult["other_matches"] = hits
+    .filter((h) => h.id !== id)
+    .map((h) => ({ id: h.id, label: h.label, description: h.description }));
 
   const { found } = await getFiles(deps, [...new Set(wanted.map((w) => w.title))], thumbWidth);
   const byTitle = new Map(found.map((f) => [f.title, f]));

@@ -20,6 +20,7 @@ test("normalizeTitle accepts titles, page URLs and upload URLs", () => {
   assert.equal(normalizeTitle("https://commons.wikimedia.org/w/index.php?title=File:X_y.png&oldid=1"), "File:X y.png");
   assert.equal(normalizeTitle("https://upload.wikimedia.org/wikipedia/commons/a/ab/Some_file.jpg"), "File:Some file.jpg");
   assert.equal(normalizeTitle("https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Some_file.svg/800px-Some_file.svg.png"), "File:Some file.svg");
+  assert.equal(normalizeTitle("https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/KF_ring_1.jpg/960px-KF_ring_1.jpg?utm_source=x"), "File:KF ring 1.jpg");
 });
 
 test("normalizeTitle rejects other hosts and bad input", () => {
