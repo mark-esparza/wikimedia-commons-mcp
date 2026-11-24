@@ -49,10 +49,10 @@ function videoInfoParams(thumbWidth: number): Record<string, string> {
 }
 
 function formatOf(mime: string, key: string | null | undefined): VideoSource["format"] {
-  if (!key) return "original";
-  if (/mpeg4|mp4|quicktime/i.test(key + mime)) return "mp4";
-  if (/webm/i.test(key + mime)) return "webm";
-  if (/ogg|ogv/i.test(key + mime)) return "ogg";
+  const k = `${key ?? ""} ${mime}`;
+  if (/mpeg4|mp4|quicktime/i.test(k)) return "mp4";
+  if (/webm/i.test(k)) return "webm";
+  if (/ogg|ogv/i.test(k)) return "ogg";
   return "original";
 }
 
@@ -72,8 +72,9 @@ export function toVideoRecord(page: any): VideoRecord | null {
     const label = d.transcodekey ? String(d.transcodekey) : "original";
     sources.push({ label, format, mime, width: d.width, height: d.height, url });
   }
-  if (!sources.some((s) => s.format === "original")) {
-    sources.push({ label: "original", format: "original", mime: base.mime ?? "", width: base.width, height: base.height, url: base.original_url });
+  if (!sources.some((s) => s.label === "original")) {
+    const mime = base.mime ?? "";
+    sources.push({ label: "original", format: formatOf(mime, null), mime, width: base.width, height: base.height, url: base.original_url });
   }
   const rank = (s: VideoSource) => (s.format === "mp4" ? 0 : s.format === "webm" ? 1 : s.format === "ogg" ? 2 : 3);
   sources.sort((a, b) => rank(a) - rank(b) || (a.height ?? 0) - (b.height ?? 0));
@@ -82,7 +83,7 @@ export function toVideoRecord(page: any): VideoRecord | null {
     .filter((t: any) => t?.src && t?.srclang)
     .map((t: any) => ({ lang: String(t.srclang), label: String(t.label ?? t.srclang).replace(/[‪-‮]/g, ""), url: String(t.src).replace(/&origin=[^&]*/, "") }));
 
-  // MPEG-4 copies play in Safari and on iPhone; small WebM is the fallback.
+  // MPEG-4 copies play in Safari and on iPhone; the smallest WebM is the fallback.
   const phone = sources.find((s) => s.format === "mp4") ?? sources.find((s) => s.format === "webm") ?? sources[0];
   const poster = base.thumb_url;
   const embedUrl = `${base.page_url}?embedplayer=yes`;
@@ -90,7 +91,7 @@ export function toVideoRecord(page: any): VideoRecord | null {
   const h = base.width && base.height ? Math.round((w * base.height) / base.width) : 360;
   const videoTags = [
     `<video controls preload="metadata" width="${w}"${poster ? ` poster="${esc(poster)}"` : ""}>`,
-    ...sources.filter((s) => s.format !== "original" || sources.length === 1).map((s) => `  <source src="${esc(s.url)}" type="${esc(s.mime)}">`),
+    ...sources.filter((s) => s.label !== "original" || sources.length === 1).map((s) => `  <source src="${esc(s.url)}" type="${esc(s.mime)}">`),
     ...captions.filter((c) => c.lang === "en").map((c) => `  <track kind="subtitles" srclang="en" label="English" src="${esc(c.url)}">`),
     `</video>`,
     `<p><small>${esc(base.attribution)}</small></p>`,
@@ -175,12 +176,14 @@ export function seekThumbUrl(thumbUrl: string, seconds: number): string {
 }
 
 export function frameTimes(duration: number, count: number, times?: number[]): number[] {
-  const safeEnd = Math.max(0, duration - 0.5);
-  if (times && times.length) {
-    return [...new Set(times.filter((t) => typeof t === "number" && Number.isFinite(t) && t >= 0).map((t) => Math.round(Math.min(t, safeEnd) * 10) / 10))].slice(0, 8);
-  }
-  // Evenly spaced, skipping the very first and last moments (often black or a title card).
-  return Array.from({ length: count }, (_, i) => Math.round(((duration * (i + 1)) / (count + 1)) * 10) / 10).map((t) => Math.min(t, safeEnd));
+  // Commons ignores fractional seek values (it silently returns the default frame), so use whole seconds.
+  const last = Math.max(0, Math.floor(duration - 0.3));
+  const raw =
+    times && times.length
+      ? times.filter((t) => typeof t === "number" && Number.isFinite(t) && t >= 0)
+      : // Evenly spaced, skipping the very first and last moments (often black or a title card).
+        Array.from({ length: count }, (_, i) => (duration * (i + 1)) / (count + 1));
+  return [...new Set(raw.map((t) => Math.min(Math.round(t), last)))].slice(0, 8);
 }
 
 export async function videoFrames(deps: Deps, input: string, count: unknown, times: unknown, width: unknown) {

@@ -23,9 +23,10 @@ test("seekThumbUrl inserts the timestamp and keeps Commons' encoding", () => {
 });
 
 test("frameTimes spaces frames evenly and clamps requested times", () => {
-  assert.deepEqual(frameTimes(36, 4), [7.2, 14.4, 21.6, 28.8]);
+  assert.deepEqual(frameTimes(36, 4), [7, 14, 22, 29]);
   assert.deepEqual(frameTimes(10, 1), [5]);
-  assert.deepEqual(frameTimes(10, 4, [0, 3.33, 3.33, 99, -1]), [0, 3.3, 9.5]);
+  assert.deepEqual(frameTimes(10, 4, [0, 3.33, 3.4, 99, -1]), [0, 3, 9]);
+  assert.deepEqual(frameTimes(2, 8), [0, 1], "short clips collapse to distinct whole seconds");
 });
 
 test("search_videos returns duration, phone-friendly MP4, captions, and filters by length", async () => {
@@ -79,6 +80,16 @@ test("get_video lists sources in order, builds embed code, and returns a transcr
   assert.equal(missing.transcript, "No fr captions. Available: en");
 });
 
+test("get_video labels an untranscoded original by its real format", async () => {
+  const page = videoPage("File:Heart.webm", { mp4: false });
+  page.videoinfo[0].derivatives = [{ src: "https://upload.wikimedia.org/wikipedia/commons/a/ab/Heart.webm", type: 'video/webm; codecs="vp9, opus"', width: 1280, height: 720 } as any];
+  const h = createHandler({ fetch: mockFetch([(u) => (isCommons(u) ? { body: { query: { pages: [page] } } } : undefined)]).fetch });
+  const d = JSON.parse((await call(h, "get_video", { file: "Heart.webm" })).content[0].text);
+  assert.deepEqual(d.sources.map((s: any) => [s.label, s.format]), [["original", "webm"]]);
+  assert.equal(d.phone_friendly_url, "https://upload.wikimedia.org/wikipedia/commons/a/ab/Heart.webm");
+  assert.match(d.embed_html, /<source src="[^"]+Heart\.webm" type="video\/webm">/);
+});
+
 test("get_video rejects images and bad language codes", async () => {
   const h = createHandler({ fetch: mockFetch([(u) => (isCommons(u) ? { body: { query: { pages: [imagePage("File:Eye.jpg")] } } } : undefined)]).fetch });
   const r = await call(h, "get_video", { file: "Eye.jpg" });
@@ -105,5 +116,5 @@ test("view_video_frames returns one image per timestamp from seeked thumbnails",
   assert.equal(m.calls[0].url.searchParams.get("viurlwidth"), "320");
 
   const picked = await call(h, "view_video_frames", { file: "Nistagmo.webm", times: [2, 50] });
-  assert.deepEqual(picked.content.filter((c: any) => c.type === "text" && c.text.startsWith("Frame")).map((c: any) => c.text), ["Frame at 2s", "Frame at 19.5s"]);
+  assert.deepEqual(picked.content.filter((c: any) => c.type === "text" && c.text.startsWith("Frame")).map((c: any) => c.text), ["Frame at 2s", "Frame at 19s"]);
 });

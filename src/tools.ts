@@ -241,7 +241,7 @@ export const TOOLS: ToolDef[] = [
     title: "View frames from a Commons video",
     description:
       "Return still frames from a Commons video as images so you can see what happens in it. " +
-      "By default takes evenly spaced frames; pass times (seconds) to look at specific moments. " +
+      "By default takes evenly spaced frames; pass times (whole seconds; Commons cannot seek to fractions) to look at specific moments. " +
       "Use this to confirm a clip shows the sign or maneuver you need before recommending it.",
     inputSchema: {
       type: "object",
