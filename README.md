@@ -4,7 +4,7 @@ A remote [MCP](https://modelcontextprotocol.io) server that lets Claude (or any 
 
 It runs as a single Cloudflare Worker with no runtime dependencies and no login. It only reads public data.
 
-> Unofficial project. Not affiliated with or endorsed by the Wikimedia Foundation.
+> Unofficial project. Wikimedia Commons and Wikidata are trademarks of the Wikimedia Foundation. This project is not endorsed by or affiliated with the Wikimedia Foundation.
 
 ## Tools
 
