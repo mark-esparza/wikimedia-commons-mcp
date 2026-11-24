@@ -1,6 +1,6 @@
 # wikimedia-commons-mcp
 
-A remote [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP client) search, view and credit freely licensed media on [Wikimedia Commons](https://commons.wikimedia.org), with Wikidata lookups for drug structures and concept images.
+A remote [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP client) search, view and credit freely licensed images and videos on [Wikimedia Commons](https://commons.wikimedia.org), with Wikidata lookups for drug structures and concept images.
 
 It runs as a single Cloudflare Worker with no runtime dependencies and no login. It only reads public data.
 
@@ -14,6 +14,9 @@ It runs as a single Cloudflare Worker with no runtime dependencies and no login.
 | `get_file_info` | Full details for one file from a title, file page URL or `upload.wikimedia.org` URL: sizes, URLs, description, categories, license. |
 | `view_image` | Returns a thumbnail as an actual image so the model can check it shows what it should before using it. |
 | `wikidata_image` | Name or Q-ID in, linked Commons images out. `prefer: "structure"` gives the chemical structure diagram (P117) for drugs; `"image"` gives the main image (P18). |
+| `search_videos` | Search Commons videos. Returns duration, resolution, poster still, a phone-friendly playback URL, caption languages and credit. Can skip videos over a length limit. |
+| `get_video` | Every playable copy of a video (MP4 for iPhone and Safari, WebM sizes, original), caption tracks, an embed iframe and a ready `<video>` tag with credit line. Optional plain-text transcript from the captions. |
+| `view_video_frames` | Still frames from evenly spaced or chosen timestamps, returned as images so the model can see what the clip shows. |
 | `find_labeled_svgs` | Finds SVG diagrams whose labels are real text, ranks them by label count and lists the labels. Good sources for image occlusion cards. |
 | `attributions` | Credit lines for up to 50 files at once in TASL, AMA or HTML style. |
 
@@ -67,6 +70,7 @@ npm run smoke -- https://<your-worker>.workers.dev/mcp   # live check after depl
 
 - Transport: MCP Streamable HTTP, stateless. `POST /mcp` takes JSON-RPC and answers with JSON. `GET /mcp` returns 405 because the server never pushes messages.
 - Commons: MediaWiki Action API (`generator=search` plus `prop=imageinfo` with `extmetadata` for license and author).
+- Videos: `prop=videoinfo` with `derivatives` (transcoded copies) and `timedtext` (captions); stills come from Commons thumbnails with a `seek=` timestamp; transcripts from `action=timedtext`.
 - Wikidata: `wbsearchentities` and `wbgetentities`, reading properties P117 and P18.
 - Safety: media downloads are limited to `upload.wikimedia.org`, URL inputs are limited to Wikimedia hosts, sizes and counts are capped, and Wikimedia responses are cached at Cloudflare's edge for an hour to keep load low.
 

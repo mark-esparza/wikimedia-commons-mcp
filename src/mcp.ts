@@ -5,7 +5,7 @@ import type { Deps } from "./commons.ts";
 import { callTool, listTools } from "./tools.ts";
 
 export const SERVER_NAME = "wikimedia-commons-mcp";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.2.0";
 export const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 const INSTRUCTIONS = [
@@ -13,6 +13,7 @@ const INSTRUCTIONS = [
   "Most Commons files require attribution: when you show or embed an image, include its attribution line.",
   "Before presenting an image as evidence or as a question exhibit, call view_image to confirm it shows what you claim.",
   "For drug and chemical structures, wikidata_image with prefer='structure' is usually the fastest route.",
+  "For videos, use search_videos, check content with view_video_frames, and use phone_friendly_url or get_video's embed_html to share or embed them.",
 ].join(" ");
 
 interface RpcRequest {

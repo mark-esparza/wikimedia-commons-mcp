@@ -37,6 +37,7 @@ export interface FileRecord {
   height?: number;
   mime?: string;
   size_bytes?: number;
+  duration_seconds?: number;
   description?: string;
   author: string;
   license: string;
@@ -47,7 +48,7 @@ export interface FileRecord {
   categories?: string[];
 }
 
-const EXTMETADATA_FIELDS = [
+export const EXTMETADATA_FIELDS = [
   "ObjectName",
   "ImageDescription",
   "Artist",
@@ -67,12 +68,21 @@ function headers(deps: Deps): Record<string, string> {
 }
 
 export async function apiGet(deps: Deps, base: string, params: Record<string, string>): Promise<any> {
+  return (await apiRequest(deps, base, params, "json")) as any;
+}
+
+export async function apiText(deps: Deps, base: string, params: Record<string, string>): Promise<string> {
+  return (await apiRequest(deps, base, params, "text")) as string;
+}
+
+async function apiRequest(deps: Deps, base: string, params: Record<string, string>, as: "json" | "text"): Promise<unknown> {
   const url = new URL(base);
-  const all: Record<string, string> = { format: "json", formatversion: "2", ...params };
+  const all: Record<string, string> = as === "json" ? { format: "json", formatversion: "2", ...params } : { ...params };
   for (const [k, v] of Object.entries(all)) url.searchParams.set(k, v);
   const init = { headers: headers(deps), cf: { cacheTtl: 3600, cacheEverything: true } } as RequestInit;
   const res = await deps.fetch(url.toString(), init);
   if (!res.ok) throw new ToolError(`Wikimedia API returned HTTP ${res.status}`);
+  if (as === "text") return await res.text();
   const data: any = await res.json();
   if (data && data.error) {
     throw new ToolError(`Wikimedia API error: ${data.error.code ?? "unknown"}: ${data.error.info ?? ""}`.trim());
@@ -158,7 +168,8 @@ function meta(em: any, key: string): string {
 }
 
 export function toFileRecord(page: any): FileRecord | null {
-  const info = page?.imageinfo?.[0];
+  // videoinfo (TimedMediaHandler) is a superset of imageinfo used for audio and video files.
+  const info = page?.imageinfo?.[0] ?? page?.videoinfo?.[0];
   if (!info || page.missing) return null;
   const em = info.extmetadata ?? {};
   const title: string = page.title;
@@ -183,6 +194,7 @@ export function toFileRecord(page: any): FileRecord | null {
     height: info.height,
     mime: info.mime,
     size_bytes: info.size,
+    duration_seconds: typeof info.duration === "number" ? Math.round(info.duration * 10) / 10 : undefined,
     description: description ? truncate(description, 400) : undefined,
     author: truncate(author, 200),
     license,

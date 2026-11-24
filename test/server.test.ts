@@ -49,11 +49,11 @@ test("notifications get 202 with no body", async () => {
   assert.equal(await res.text(), "");
 });
 
-test("tools/list returns all six tools with schemas", async () => {
+test("tools/list returns all nine tools with schemas", async () => {
   const h = createHandler({ fetch: mockFetch([]).fetch });
   const body: any = await (await rpc(h, { jsonrpc: "2.0", id: 3, method: "tools/list" })).json();
   const names = body.result.tools.map((t: any) => t.name);
-  assert.deepEqual(names, ["search_images", "get_file_info", "view_image", "wikidata_image", "find_labeled_svgs", "attributions"]);
+  assert.deepEqual(names, ["search_images", "get_file_info", "view_image", "wikidata_image", "search_videos", "get_video", "view_video_frames", "find_labeled_svgs", "attributions"]);
   for (const t of body.result.tools) {
     assert.equal(t.inputSchema.type, "object");
     assert.equal(t.annotations.readOnlyHint, true);
@@ -125,7 +125,7 @@ test("search_images sends User-Agent, filters non-images and share-alike, keeps 
   assert.equal(sent.url.searchParams.get("gsrnamespace"), "6");
   assert.equal(sent.url.searchParams.get("formatversion"), "2");
   assert.equal(sent.url.searchParams.get("gsrsearch"), "Kayser-Fleischer ring");
-  assert.match(sent.headers["User-Agent"], /^WikimediaCommonsMCP\/0\.1\.0 \(me@example\.org\)$/);
+  assert.match(sent.headers["User-Agent"], /^WikimediaCommonsMCP\/0\.2\.0 \(me@example\.org\)$/);
 
   const r2 = await call(h, "search_images", { query: "x", allow_share_alike: false, media: "photo" });
   const d2 = JSON.parse(r2.content[0].text);
@@ -273,7 +273,7 @@ test("view_image works with thumb.wikimedia.org thumbnails and URLs drop utm par
   assert.equal(info.original_url, "https://upload.wikimedia.org/wikipedia/commons/6/6c/KF_ring_1.jpg");
 });
 
-test("find_labeled_svgs ranks by label count and only fetches upload.wikimedia.org", async () => {
+test("find_labeled_svgs ranks by label count and only fetches Wikimedia media hosts", async () => {
   const svgA = "<svg><text>Heart</text><text>Aorta</text><text>Left atrium</text><text>Right atrium</text></svg>";
   const svgB = "<svg><text>A</text><text>B</text><text>C</text></svg>";
   const svgC = "<svg><path d='M0'/></svg>";

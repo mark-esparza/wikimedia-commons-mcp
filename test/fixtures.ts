@@ -51,3 +51,49 @@ export function mockFetch(routes: Route[]) {
   }) as typeof fetch;
   return { fetch: fn, calls };
 }
+
+export function videoPage(title: string, opts: { index?: number; duration?: number; mp4?: boolean; captions?: string[] } = {}) {
+  const name = title.replace(/^File:/, "").replace(/ /g, "_");
+  const enc = encodeURIComponent(name);
+  const derivatives = [
+    { src: `https://upload.wikimedia.org/wikipedia/commons/transcoded/d/dc/${enc}/${enc}.480p.vp9.webm?utm_source=commons.wikimedia.org`, type: 'video/webm; codecs="vp9, opus"', transcodekey: "480p.vp9.webm", width: 854, height: 480 },
+    { src: `https://upload.wikimedia.org/wikipedia/commons/transcoded/d/dc/${enc}/${enc}.240p.vp9.webm`, type: 'video/webm; codecs="vp9, opus"', transcodekey: "240p.vp9.webm", width: 426, height: 240 },
+    ...(opts.mp4 === false ? [] : [{ src: `https://upload.wikimedia.org/wikipedia/commons/transcoded/d/dc/${enc}/${enc}.360p.mpeg4.mov`, type: 'video/quicktime; codecs="mp4v"', transcodekey: "360p.mpeg4.mov", width: 640, height: 360 }]),
+    { src: `https://upload.wikimedia.org/wikipedia/commons/d/dc/${enc}?utm_source=x`, type: 'video/webm; codecs="vp9"', width: 1280, height: 720 },
+  ];
+  return {
+    pageid: 5000 + (opts.index ?? 0),
+    ns: 6,
+    title,
+    index: opts.index,
+    videoinfo: [
+      {
+        size: 2_000_000,
+        width: 1280,
+        height: 720,
+        duration: opts.duration ?? 36.27,
+        mime: "video/webm",
+        url: `https://upload.wikimedia.org/wikipedia/commons/d/dc/${enc}?utm_source=commons.wikimedia.org&utm_content=original`,
+        descriptionurl: `https://commons.wikimedia.org/wiki/File:${enc}`,
+        thumburl: `https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dc/${enc}/500px--${enc}.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo`,
+        thumbwidth: 640,
+        thumbheight: 360,
+        derivatives,
+        timedtext: (opts.captions ?? []).map((l) => ({
+          kind: "subtitles",
+          label: `Lang ‪(${l})‬`,
+          srclang: l,
+          type: "text/vtt",
+          src: `https://commons.wikimedia.org/w/api.php?action=timedtext&title=File%3A${enc}&lang=${l}&trackformat=vtt&origin=%2A`,
+        })),
+        extmetadata: {
+          ImageDescription: { value: "Dog 10, <b>nystagmus</b>" },
+          Artist: { value: "Bernardino F, et al." },
+          LicenseShortName: { value: "CC BY 4.0" },
+          LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0" },
+          AttributionRequired: { value: "true" },
+        },
+      },
+    ],
+  };
+}

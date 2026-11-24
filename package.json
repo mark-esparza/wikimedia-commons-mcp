@@ -1,6 +1,6 @@
 {
   "name": "wikimedia-commons-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unofficial remote MCP server that lets Claude search, view, and credit freely licensed media on Wikimedia Commons.",
   "private": true,
   "type": "module",

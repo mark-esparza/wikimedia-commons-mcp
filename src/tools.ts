@@ -15,6 +15,7 @@ import {
   wikidataImages,
 } from "./commons.ts";
 import { extractSvgLabels } from "./svg.ts";
+import { type VideoRecord, getTranscript, getVideo, searchVideos, videoFrames } from "./video.ts";
 import { clampInt, ToolError } from "./util.ts";
 
 export interface ToolContent {
@@ -57,6 +58,23 @@ function brief(rec: FileRecord) {
     license: rec.license,
     author: rec.author,
     attribution: rec.attribution,
+  };
+}
+
+function briefVideo(v: VideoRecord) {
+  return {
+    title: v.title,
+    description: v.description,
+    duration_seconds: v.duration_seconds,
+    width: v.width,
+    height: v.height,
+    poster_url: v.poster_url,
+    phone_friendly_url: v.phone_friendly_url,
+    caption_languages: v.captions.map((c) => c.lang),
+    page_url: v.page_url,
+    license: v.license,
+    author: v.author,
+    attribution: v.attribution,
   };
 }
 
@@ -164,6 +182,91 @@ export const TOOLS: ToolDef[] = [
       const prefer = a.prefer === "structure" || a.prefer === "image" ? a.prefer : "auto";
       const r = await wikidataImages(deps, a.entity, prefer, clampInt(a.thumb_width, 64, 2000, 800));
       return json({ ...r, files: r.files.map((f) => ({ property: f.property, property_label: f.property_label, ...brief(f.file) })) });
+    },
+  },
+  {
+    name: "search_videos",
+    title: "Search Commons videos",
+    description:
+      "Search Wikimedia Commons for freely licensed videos (clinical signs, exam maneuvers, animations, lectures). " +
+      "Returns duration, resolution, a poster still, a phone-friendly playback URL, caption languages, license and attribution. " +
+      "Many medical clips come from open-access journal supplements. Use view_video_frames to check what a video shows.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to search for, for example 'nystagmus' or 'Dix-Hallpike'", maxLength: 300 },
+        limit: { type: "integer", minimum: 1, maximum: 20, default: 5 },
+        max_duration_seconds: { type: "number", minimum: 1, description: "Skip videos longer than this" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    annotations: READ_ONLY,
+    async run(deps, a) {
+      const results = await searchVideos(deps, a.query, a.limit, a.max_duration_seconds);
+      return json({ query: a.query, count: results.length, results: results.map(briefVideo) });
+    },
+  },
+  {
+    name: "get_video",
+    title: "Get a Commons video",
+    description:
+      "Full details for one Commons video: every playable copy (MP4 for iPhone and Safari, WebM at several sizes, the original), " +
+      "caption tracks, an embed iframe and a ready <video> tag with credit line for web pages or artifacts. " +
+      "Set transcript_lang (for example 'en') to also get the caption text as a plain transcript.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File title or URL" },
+        transcript_lang: { type: "string", description: "Language code of captions to return as text", maxLength: 12 },
+      },
+      required: ["file"],
+      additionalProperties: false,
+    },
+    annotations: READ_ONLY,
+    async run(deps, a) {
+      const v = await getVideo(deps, a.file);
+      const out: Record<string, unknown> = { ...v };
+      if (a.transcript_lang) {
+        const lang = String(a.transcript_lang).toLowerCase();
+        out.transcript = v.captions.some((c) => c.lang.toLowerCase() === lang)
+          ? await getTranscript(deps, v.title, lang)
+          : `No ${lang} captions. Available: ${v.captions.map((c) => c.lang).join(", ") || "none"}`;
+      }
+      return json(out);
+    },
+  },
+  {
+    name: "view_video_frames",
+    title: "View frames from a Commons video",
+    description:
+      "Return still frames from a Commons video as images so you can see what happens in it. " +
+      "By default takes evenly spaced frames; pass times (seconds) to look at specific moments. " +
+      "Use this to confirm a clip shows the sign or maneuver you need before recommending it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File title or URL" },
+        count: { type: "integer", minimum: 1, maximum: 8, default: 4, description: "Evenly spaced frames to take" },
+        times: { type: "array", items: { type: "number", minimum: 0 }, maxItems: 8, description: "Specific timestamps in seconds (overrides count)" },
+        width: { type: "integer", minimum: 120, maximum: 800, default: 480 },
+      },
+      required: ["file"],
+      additionalProperties: false,
+    },
+    annotations: READ_ONLY,
+    async run(deps, a) {
+      const { rec, frames } = await videoFrames(deps, a.file, a.count, a.times, a.width);
+      const content: ToolContent[] = [];
+      for (const f of frames) {
+        content.push({ type: "text", text: `Frame at ${f.t}s` });
+        content.push({ type: "image", data: f.data, mimeType: f.mimeType });
+      }
+      content.push({
+        type: "text",
+        text: JSON.stringify({ title: rec.title, duration_seconds: rec.duration_seconds, page_url: rec.page_url, phone_friendly_url: rec.phone_friendly_url, license: rec.license, attribution: rec.attribution }, null, 2),
+      });
+      return { content };
     },
   },
   {
